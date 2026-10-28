@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Translated call</title>
+<meta name="theme-color" content="#0E7C86">
+<style>
+:root{--bg:#F5F8F9;--card:#fff;--fg:#10222A;--muted:#5B6B72;--pri:#0E7C86;--acc:#14B8A6;--bad:#DC2626;--me:#E3F4F2}
+@media (prefers-color-scheme:dark){:root{--bg:#0B1418;--card:#13222A;--fg:#E7F0F2;--muted:#9AB0B6;--me:#16343A}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px 16px 120px}
+h1{font-size:1.5rem;margin:8px 0 4px}p{margin:.4em 0}.muted{color:var(--muted);font-size:.9rem}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+label{display:block;font-weight:600;margin:8px 0 4px}select,input{width:100%;font-size:1rem;padding:12px;border-radius:12px;border:1px solid #c9d6da;background:var(--card);color:var(--fg)}
+button{font:inherit;font-weight:700;border:0;border-radius:16px;padding:16px;width:100%;cursor:pointer}
+.primary{background:linear-gradient(135deg,var(--pri),var(--acc));color:#fff;font-size:1.1rem}
+.danger{background:var(--bad);color:#fff}.ghost{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+#status{display:flex;align-items:center;gap:8px;font-weight:600}.dot{width:10px;height:10px;border-radius:50%;background:#aaa}
+.dot.on{background:#16a34a}.dot.wait{background:#d97706;animation:p 1s infinite}@keyframes p{50%{opacity:.3}}
+#log{display:flex;flex-direction:column-reverse;gap:8px}
+.msg{max-width:88%;padding:10px 12px;border-radius:16px;background:var(--card)}.msg.me{align-self:flex-end;background:var(--me)}
+.msg .o{color:var(--muted);font-size:.85rem}.msg .t{font-size:1.15rem;font-weight:600}.msg.live{opacity:.7;border:1px dashed var(--acc)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px;max-width:640px;margin:0 auto}
+.meter{height:6px;border-radius:4px;background:#d5e0e3;overflow:hidden}.meter i{display:block;height:100%;width:0;background:var(--acc);transition:width .1s}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div id="join">
+    <h1 data-i="title">Translated call</h1>
+    <p class="muted" data-i="intro">Speak in your own language. The other person hears you translated, and you hear them translated. Nothing to install.</p>
+    <div class="card">
+      <label for="lang" data-i="yourLang">Your language</label>
+      <select id="lang"></select>
+      <label for="name" data-i="yourName">Your name (optional)</label>
+      <input id="name" maxlength="40" autocomplete="name">
+      <p class="muted" data-i="tip">Tip: use headphones for the best result.</p>
+    </div>
+    <button class="primary" id="go" data-i="join">Join the call</button>
+    <p class="muted" id="joinErr"></p>
+    <p class="muted" data-i="privacy">Your voice is sent directly to the other person's phone, where it is transcribed and translated. Nothing is recorded.</p>
+  </div>
+
+  <div id="call" class="hidden">
+    <div class="card">
+      <div id="status"><span class="dot wait" id="dot"></span><span id="statusText"></span></div>
+      <p class="muted" id="hostLang"></p>
+      <div class="meter"><i id="lvl"></i></div>
+    </div>
+    <div id="log"></div>
+  </div>
+</main>
+<div class="bar hidden" id="bar">
+  <button class="ghost" id="mute" style="flex:1" data-i="mute">Mute</button>
+  <button class="danger" id="hang" style="flex:2" data-i="hang">Hang up</button>
+</div>
+
+<script src="peerjs.min.js"></script>
+<script>
+const LANGS = [
+  ['fr','Français','fr-FR'],
+  ['en','English','en-US'],
+  ['es','Español','es-ES'],
+  ['de','Deutsch','de-DE'],
+  ['it','Italiano','it-IT'],
+  ['pt','Português','pt-PT'],
+  ['zh','中文','zh-CN'],
+  ['ja','日本語','ja-JP'],
+  ['ko','한국어','ko-KR'],
+  ['ar','العربية','ar-SA'],
+  ['ru','Русский','ru-RU'],
+  ['hi','हिन्दी','hi-IN'],
+  ['tr','Türkçe','tr-TR'],
+  ['nl','Nederlands','nl-NL'],
+  ['pl','Polski','pl-PL'],
+  ['el','Ελληνικά','el-GR'],
+  ['th','ไทย','th-TH'],
+  ['vi','Tiếng Việt','vi-VN'],
+  ['id','Bahasa Indonesia','id-ID'],
+  ['af','Afrikaans','af-ZA'],
+  ['sq','Shqip','sq-AL'],
+  ['be','Беларуская','be-BY'],
+  ['bn','বাংলা','bn-BD'],
+  ['bg','Български','bg-BG'],
+  ['ca','Català','ca-ES'],
+  ['hr','Hrvatski','hr-HR'],
+  ['cs','Čeština','cs-CZ'],
+  ['da','Dansk','da-DK'],
+  ['eo','Esperanto','eo'],
+  ['et','Eesti','et-EE'],
+  ['fi','Suomi','fi-FI'],
+  ['gl','Galego','gl-ES'],
+  ['ka','ქართული','ka-GE'],
+  ['gu','ગુજરાતી','gu-IN'],
+  ['ht','Kreyòl ayisyen','ht-HT'],
+  ['he','עברית','he-IL'],
+  ['hu','Magyar','hu-HU'],
+  ['is','Íslenska','is-IS'],
+  ['ga','Gaeilge','ga-IE'],
+  ['kn','ಕನ್ನಡ','kn-IN'],
+  ['lv','Latviešu','lv-LV'],
+  ['lt','Lietuvių','lt-LT'],
+  ['mk','Македонски','mk-MK'],
+  ['ms','Bahasa Melayu','ms-MY'],
+  ['mt','Malti','mt-MT'],
+  ['mr','मराठी','mr-IN'],
+  ['no','Norsk','nb-NO'],
+  ['fa','فارسی','fa-IR'],
+  ['ro','Română','ro-RO'],
+  ['sk','Slovenčina','sk-SK'],
+  ['sl','Slovenščina','sl-SI'],
+  ['sw','Kiswahili','sw-KE'],
+  ['sv','Svenska','sv-SE'],
+  ['tl','Tagalog','fil-PH'],
+  ['ta','தமிழ்','ta-IN'],
+  ['te','తెలుగు','te-IN'],
+  ['uk','Українська','uk-UA'],
+  ['ur','اردو','ur-PK'],
+  ['cy','Cymraeg','cy-GB']
+];
+const FR = (navigator.language||'en').toLowerCase().startsWith('fr');
+const T = {
+  title:['Translated call','Appel traduit'], intro:['Speak in your own language. The other person hears you translated, and you hear them translated. Nothing to install.','Parlez dans votre langue. Votre interlocuteur vous entend traduit, et vous l\'entendez traduit. Rien à installer.'],
+  yourLang:['Your language','Votre langue'], yourName:['Your name (optional)','Votre nom (facultatif)'], tip:['Tip: use headphones for the best result.','Conseil : utilisez des écouteurs pour un meilleur résultat.'],
+  join:['Join the call','Rejoindre l\'appel'], privacy:['Your voice is sent directly to the other person\'s phone, where it is transcribed and translated. Nothing is recorded.','Votre voix est envoyée directement au téléphone de votre interlocuteur, où elle est transcrite et traduite. Rien n\'est enregistré.'],
+  mute:['Mute','Couper le micro'], unmute:['Unmute','Réactiver le micro'], hang:['Hang up','Raccrocher'],
+  connecting:['Connecting…','Connexion…'], connected:['Connected — speak normally','Connecté — parlez normalement'], preparing:['Connected — preparing translation…','Connecté — préparation de la traduction…'],
+  ended:['Call ended','Appel terminé'], badLink:['This link is incomplete. Ask for a new one.','Ce lien est incomplet. Demandez-en un nouveau.'],
+  noMic:['Microphone access is needed for the call.','L\'accès au micro est nécessaire pour l\'appel.'], failed:['Could not reach the other person. Check that their app is open, then try again.','Impossible de joindre votre interlocuteur. Vérifiez que son application est ouverte, puis réessayez.'],
+  theySpeak:['The other person speaks: ','Votre interlocuteur parle : '], unavailable:['Your language is not installed on the other phone. Please choose another language.','Votre langue n\'est pas installée sur l\'autre téléphone. Choisissez une autre langue.'],
+};
+const tr = k => T[k][FR?1:0];
+document.querySelectorAll('[data-i]').forEach(e => e.textContent = tr(e.dataset.i));
+document.documentElement.lang = FR ? 'fr' : 'en';
+
+const params = new URLSearchParams(location.hash.slice(1).replace(/^([^&=]+)(&|$)/, 'id=$1$2'));
+const hostId = params.get('id'); const hostLangCode = params.get('l');
+const sel = document.getElementById('lang');
+const nav = (navigator.language||'en').split('-')[0];
+for (const [c,n,l] of LANGS) { const o = document.createElement('option'); o.value = l; o.textContent = n; if (c===nav) o.selected = true; sel.appendChild(o); }
+if (!hostId) { document.getElementById('go').disabled = true; document.getElementById('joinErr').textContent = tr('badLink'); }
+
+let peer, conn, ctx, micNode, stream, muted = false, speaking = false, playingUntil = 0, myLocale = 'en-US', ended = false;
+const $ = id => document.getElementById(id);
+function status(text, cls){ $('statusText').textContent = text; $('dot').className = 'dot ' + (cls||''); }
+function add(cls, orig, text, live){
+  let el = live ? document.querySelector('.msg.live.'+cls) : null;
+  if (!el) { el = document.createElement('div'); el.className = 'msg ' + cls + (live?' live':''); el.innerHTML = '<div class="o"></div><div class="t"></div>'; $('log').prepend(el); }
+  el.querySelector('.o').textContent = orig || ''; el.querySelector('.t').textContent = text || '';
+  if (!live) document.querySelectorAll('.msg.live.'+cls).forEach(x => x.remove());
+}
+
+// ---- Synthèse vocale de la traduction (voix du navigateur)
+function speak(text){
+  if (!('speechSynthesis' in window) || !text) return;
+  const u = new SpeechSynthesisUtterance(text); u.lang = myLocale;
+  const v = speechSynthesis.getVoices().find(v => v.lang.replace('_','-').toLowerCase().startsWith(myLocale.split('-')[0]));
+  if (v) u.voice = v;
+  u.onstart = () => { speaking = true; send({t:'speaking', on:true}); };
+  u.onend = u.onerror = () => { setTimeout(() => { speaking = speechSynthesis.speaking; }, 200); send({t:'speaking', on:false}); };
+  speechSynthesis.speak(u);
+}
+
+// ---- Lecture de la voix originale de l'hôte (PCM 16 bits 16 kHz)
+let playHead = 0;
+function playPcm(buf){
+  const i16 = new Int16Array(buf); if (!i16.length || !ctx) return;
+  const b = ctx.createBuffer(1, i16.length, 16000); const d = b.getChannelData(0);
+  for (let i=0;i<i16.length;i++) d[i] = i16[i]/32768;
+  const s = ctx.createBufferSource(); s.buffer = b; const g = ctx.createGain(); g.gain.value = 0.35;
+  s.connect(g).connect(ctx.destination);
+  playHead = Math.max(playHead, ctx.currentTime + 0.05); s.start(playHead); playHead += b.duration;
+  playingUntil = performance.now() + (playHead - ctx.currentTime)*1000 + 250;
+}
+
+function send(m){ try { if (conn && conn.open) conn.send(JSON.stringify(m)); } catch(e){} }
+
+// ---- Micro → 16 kHz PCM 16 bits, blocs de 100 ms
+const WORKLET = `class P extends AudioWorkletProcessor{constructor(){super();this.r=sampleRate/16000;this.acc=[];this.pos=0;}
+process(inp){const x=inp[0][0];if(!x)return true;let lvl=0;
+for(let i=0;i<x.length;i++)lvl+=x[i]*x[i];
+while(this.pos<x.length){this.acc.push(x[Math.floor(this.pos)]);this.pos+=this.r;}this.pos-=x.length;
+if(this.acc.length>=1600){const o=new Int16Array(1600);for(let i=0;i<1600;i++){const v=Math.max(-1,Math.min(1,this.acc[i]));o[i]=v<0?v*32768:v*32767;}
+this.acc=this.acc.slice(1600);this.port.postMessage({pcm:o.buffer,lvl:Math.sqrt(lvl/x.length)},[o.buffer]);}return true;}}
+registerProcessor('p',P);`;
+
+async function start(){
+  myLocale = sel.value;
+  $('go').disabled = true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  } catch(e){ $('joinErr').textContent = tr('noMic'); $('go').disabled = false; return; }
+  ctx = new (window.AudioContext||window.webkitAudioContext)();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'})));
+  const src = ctx.createMediaStreamSource(stream);
+  micNode = new AudioWorkletNode(ctx,'p');
+  micNode.port.onmessage = e => {
+    $('lvl').style.width = Math.min(100, e.data.lvl*400) + '%';
+    const gated = muted || speaking || (window.speechSynthesis && speechSynthesis.speaking) || performance.now() < playingUntil;
+    if (!gated && conn && conn.open) conn.send(e.data.pcm);
+  };
+  src.connect(micNode);
+  if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance('')); // déverrouille la voix (iPhone)
+  $('join').classList.add('hidden'); $('call').classList.remove('hidden'); $('bar').classList.remove('hidden');
+  status(tr('connecting'), 'wait');
+  peer = new Peer();
+  peer.on('open', () => {
+    conn = peer.connect(hostId, {serialization:'raw', reliable:true});
+    conn.on('open', () => { status(tr('preparing'), 'wait'); send({t:'hello', lang: myLocale.split('-')[0], name: $('name').value}); });
+    conn.on('data', onData);
+    conn.on('close', end);
+    conn.on('error', () => status(tr('failed')));
+  });
+  peer.on('error', e => { if (!ended) status(tr('failed')); });
+  setTimeout(() => { if (!conn || !conn.open) status(tr('failed')); }, 20000);
+}
+
+function onData(d){
+  if (typeof d !== 'string') { playPcm(d instanceof ArrayBuffer ? d : d.buffer); return; }
+  let m; try { m = JSON.parse(d); } catch(e){ return; }
+  switch (m.t) {
+    case 'hello': { const L = LANGS.find(x => x[0] === m.lang); $('hostLang').textContent = tr('theySpeak') + (L ? L[1] : m.lang); break; }
+    case 'ready': status(tr('connected'), 'on'); break;
+    case 'partial': add('them', m.orig, m.text, true); break;
+    case 'tr': add('them', m.orig, m.text, false); speak(m.text); break;
+    case 'heard': add('me', m.orig, m.text, false); break;
+    case 'error': status(tr('unavailable')); break;
+    case 'bye': end(); break;
+  }
+}
+
+function end(){
+  if (ended) return; ended = true;
+  status(tr('ended')); $('bar').classList.add('hidden');
+  try { send({t:'bye'}); } catch(e){}
+  try { stream.getTracks().forEach(t => t.stop()); } catch(e){}
+  try { conn && conn.close(); peer && peer.destroy(); } catch(e){}
+}
+
+$('go').onclick = start;
+$('mute').onclick = () => { muted = !muted; $('mute').textContent = tr(muted ? 'unmute' : 'mute'); };
+$('hang').onclick = end;
+window.addEventListener('pagehide', () => send({t:'bye'}));
+</script>
+</body>
+</html>
